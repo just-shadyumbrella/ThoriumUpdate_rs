@@ -1,0 +1,34 @@
+[package]
+name = "ThoriumUpdate"
+description = "Thorium Update"
+version = "0.1.5-alpha"
+edition = "2024"
+authors = ["just-shadyumbrella"]
+repository = "https://github.com/just-shadyumbrella/ThoriumUpdate_rs"
+license-file = "LICENSE"
+
+[dependencies]
+const_format = "*"
+natord = "*"
+regex = "*"
+sha2 = "*"
+simd-json = { version = "*", features = ["runtime-detection"] }
+# owo-colors = "*"
+hide_console = "*"
+rayon = "*"
+shell-words = "*"
+windows-registry = "*"
+versions = "*"
+
+[build-dependencies]
+const_format = "*"
+winresource = "*"
+chrono = "*"
+
+[profile.release]
+# opt-level = "z" # Uncomment to enable zero optimization (slower but smaller binary)
+opt-level = 3
+strip = true
+lto = true
+panic = "abort"
+codegen-units = 1

@@ -1,0 +1,92 @@
+permissions:
+  contents: write
+
+name: Build
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+        - uses: actions/checkout@v7
+          with:
+            fetch-depth: 0
+
+        - name: Get Version Information
+          id: get_vars
+          shell: powershell
+          run: |
+            $nameLine = Select-String -Path .\Cargo.toml -Pattern '^name\s*=\s*"(.*)"'
+            if ($nameLine) {
+                $name = $nameLine.Matches.Groups[1].Value
+            } else {
+                $name = "unknown"
+            }
+
+            $versionLine = Select-String -Path .\Cargo.toml -Pattern '^version\s*=\s*"(.*)"'
+            if ($versionLine) {
+                $version = $versionLine.Matches.Groups[1].Value
+            } else {
+                $version = "unknown"
+            }
+
+            $git_hash = (git rev-parse --short HEAD).Trim()
+
+            echo "pkg_name=$name" >> $env:GITHUB_OUTPUT
+            echo "pkg_version=$version" >> $env:GITHUB_OUTPUT
+            echo "git_hash=$git_hash" >> $env:GITHUB_OUTPUT
+
+            Write-Host "INFO: $name v$version-$git_hash"
+
+        - name: Install Rust toolchain
+          uses: dtolnay/rust-toolchain@stable
+          with:
+            targets: x86_64-pc-windows-msvc
+
+        - name: Configure MSVC
+          uses: TheMrMilchmann/setup-msvc-dev@v4
+          with:
+            arch: x64
+
+        - name: Rust Cache
+          uses: swatinem/rust-cache@v2
+
+        - name: Build Debug
+          run: cargo build --verbose
+
+        - name: Upload Debug Artifact
+          uses: actions/upload-artifact@v7
+          with:
+            name: build-debug-${{ steps.get_vars.outputs.pkg_name }}-${{ steps.get_vars.outputs.pkg_version }}-${{ steps.get_vars.outputs.git_hash }}
+            path: |
+              target/debug/*.exe
+              target/debug/*.dll
+            if-no-files-found: warn
+
+        - name: Build Release
+          run: cargo build --release --verbose
+
+        - name: Upload Release Artifact
+          uses: actions/upload-artifact@v7
+          with:
+            name: build-release-${{ steps.get_vars.outputs.pkg_name }}-${{ steps.get_vars.outputs.pkg_version }}-${{ steps.get_vars.outputs.git_hash }}
+            path: |
+              target/release/*.exe
+              target/release/*.dll
+            if-no-files-found: error
+
+        - name: Release
+          uses: softprops/action-gh-release@v3
+          if: github.ref_type == 'tag'
+          with:
+            prerelease: ${{ contains(github.ref_name, '-') }}
+            files: |
+              target/release/*.exe
+              target/release/*.dll

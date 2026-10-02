@@ -1,0 +1,3 @@
+[build]
+rustflags = ["-C", "target-feature=+sse2,+crt-static"]
+# target = "i686-pc-windows-msvc" # Until needed
