@@ -1,0 +1,60 @@
+permissions:
+  contents: read
+
+name: Run
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  run:
+    runs-on: windows-latest
+    steps:
+        - uses: actions/checkout@v7
+
+        - name: Get Version Information
+          id: get_vars
+          shell: powershell
+          run: |
+            $nameLine = Select-String -Path .\Cargo.toml -Pattern '^name\s*=\s*"(.*)"'
+            if ($nameLine) {
+                $name = $nameLine.Matches.Groups[1].Value
+            } else {
+                $name = "unknown"
+            }
+
+            $versionLine = Select-String -Path .\Cargo.toml -Pattern '^version\s*=\s*"(.*)"'
+            if ($versionLine) {
+                $version = $versionLine.Matches.Groups[1].Value
+            } else {
+                $version = "unknown"
+            }
+
+            $git_hash = (git rev-parse HEAD).Trim()
+
+            echo "pkg_name=$name" >> $env:GITHUB_OUTPUT
+            echo "pkg_version=$version" >> $env:GITHUB_OUTPUT
+            echo "git_hash=$git_hash" >> $env:GITHUB_OUTPUT
+
+            Write-Host "INFO: $name v$version-$git_hash"
+
+        - name: Install Rust toolchain
+          uses: dtolnay/rust-toolchain@stable
+          with:
+            targets: x86_64-pc-windows-msvc
+
+        - name: Configure MSVC
+          uses: ilammy/msvc-dev-cmd@v1
+          with:
+            arch: x64
+
+        - name: Rust Cache
+          uses: swatinem/rust-cache@v2
+
+        - name: Run Debug
+          run: cargo run --verbose
+
+        - name: Run Release
+          run: cargo run --release
