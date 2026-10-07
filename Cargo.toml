@@ -5,6 +5,7 @@ version = "0.1.2-alpha"
 edition = "2024"
 authors = ["just-shadyumbrella"]
 repository = "https://github.com/just-shadyumbrella/ThoriumUpdate_rs"
+license-file = "LICENSE"
 
 [dependencies]
 const_format = "*"
