@@ -49,7 +49,7 @@ pub fn simple_spawn(cmd: &str, args: &[&str], suppress_error: bool) -> i32 {
     let status = process.wait().unwrap();
     if !status.success() {
         if !suppress_error {
-            eprintln!("ERROR: {} ({})", cmd, status);
+            eprintln!("{}: failed ({})", cmd, status);
         }
         match status.code() {
             Some(code) => return code,

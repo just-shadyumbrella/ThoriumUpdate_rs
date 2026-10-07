@@ -6,12 +6,12 @@ Based on [`template-rs`](https://github.com/just-shadyumbrella/template-rs#prere
 - `/help`, `/?`: Show this
 - `/silent`: Do not show console output.
 - `/repair`: Reinstall Thorium without uninstalling current install.
-  - `/force`: Force uninstall existing Thorium install if any.
-    - `/clearuserdata`: Clear Thorium user profile and data as well.
-- `/cache`: Do not delete downloaded installer after use.
+ - `/force`: Force uninstall existing Thorium install if any.
+  - `/clearuserdata`: Clear Thorium user profile and data as well.
+- `/nocache`: By default the program will not delete downloaded installer after use as cache, switch this to disable.
 - `/repo`: Override GitHub repository of Thorium update source. (Default: current active maintainer).
   > ```batch
-  > /repo=Alex313031/thorium
+  > /repo=Alex313031/Thorium-Win
   > ```
 > [!WARNING]
 > This may not future-proof, expect breaking changes in the future.

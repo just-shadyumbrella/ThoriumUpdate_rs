@@ -1,7 +1,7 @@
 [package]
 name = "ThoriumUpdate"
 description = "Thorium Update"
-version = "0.1.2-alpha"
+version = "0.1.3-beta"
 edition = "2024"
 authors = ["just-shadyumbrella"]
 repository = "https://github.com/just-shadyumbrella/ThoriumUpdate_rs"

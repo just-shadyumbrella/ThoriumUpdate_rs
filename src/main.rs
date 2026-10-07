@@ -33,7 +33,7 @@ fn program() -> i32 {
     let mut help = false;
     let mut repair = false;
     let mut force = false;
-    let mut cache = false;
+    let mut nocache = false;
     let mut clearuserdata = false;
     let mut simd: Option<String> = None;
 
@@ -65,15 +65,27 @@ fn program() -> i32 {
                     true
                 }
                 "force" => {
-                    force = true;
+                    if repair {
+                        eprintln!("WARNING: Force install...");
+                        force = true;
+                    } else {
+                        eprintln!("WARNING: Ignoring '/force' because '/repair' is not set...");
+                    }
                     true
                 }
-                "cache" => {
-                    cache = true;
+                "nocache" => {
+                    nocache = true;
                     true
                 }
                 "clearuserdata" => {
-                    clearuserdata = true;
+                    if repair && force {
+                        eprintln!("WARNING: Clear user profile...");
+                        clearuserdata = true;
+                    } else {
+                        eprintln!(
+                            "WARNING: Ignoring '/clearuserdata' because '/repair' and '/force' are not set..."
+                        );
+                    }
                     true
                 }
                 _ => false,
@@ -136,65 +148,77 @@ fn program() -> i32 {
     }
 
     let installer_info = get_package_info(&repo, &sources, simd.as_deref());
-    if let Some(info) = installer_info {
-        let v1 = Versioning::new(uninstall_reg_get_string("Version").unwrap_or_default())
-            .unwrap_or_default();
-        println!("Currently installed: {}", v1.to_string());
-        let v2 = Versioning::new(&info.version).unwrap_or_default();
-        println!("Upstream: {}", v2.to_string());
-        if repair || v1 < v2 {
-            let download_path = "./setup.exe";
-            let status = aria2_downloader(&info.url, &download_path, None);
-            if status != 0 {
-                return status;
-            }
-
-            if force {
-                eprintln!("WARNING: Force install current installed Thorium...");
-                let uninstall_string =
-                    uninstall_reg_get_string("UninstallString").unwrap_or_default();
-                let status = simple_spawn(
-                    &uninstall_string,
-                    if clearuserdata {
-                        eprintln!("WARNING: Clear user profile...");
-                        &["--delete-profile"]
-                    } else {
-                        &[]
-                    },
-                    false,
-                );
+    match installer_info {
+        Some(info) => {
+            let v1 = Versioning::new(uninstall_reg_get_string("Version").unwrap_or_default());
+            println!(
+                "Currently installed: {}",
+                match &v1 {
+                    Some(v) => v.to_string(),
+                    None => "not installed".to_owned(),
+                }
+            );
+            let v2 = Versioning::new(&info.version);
+            println!(
+                "Upstream: {}",
+                match &v2 {
+                    Some(v) => v.to_string(),
+                    None => panic!("unexpected version of upstream"),
+                }
+            );
+            if repair || v1.unwrap_or_default() < v2.to_owned().unwrap_or_default() {
+                let download_path = "./setup.exe";
+                let status = aria2_downloader(&info.url, &download_path, None);
                 if status != 0 {
                     return status;
                 }
-            }
 
-            let setup_args: Vec<&str> = ["--silent"]
-                .into_iter()
-                .chain(args.par_iter().map(|s| s.as_str()).collect::<Vec<_>>())
-                .collect();
-            println!("Installing Thorium...");
-            let status = simple_spawn(&download_path, &setup_args, false);
-            if !cache {
-                fs::remove_file(&download_path).ok();
-            }
-            if status != 0 {
-                return status;
-            }
+                if force {
+                    let uninstall_string = uninstall_reg_get_string("UninstallString");
+                    if uninstall_string.is_some() {
+                        let mut setup_args: Vec<&str> = ["--force-uninstall"]
+                            .into_iter()
+                            .chain(args.par_iter().map(|s| s.as_str()).collect::<Vec<_>>())
+                            .collect();
+                        if clearuserdata {
+                            setup_args.push("--delete-profile");
+                        }
+                        let status = simple_spawn(&uninstall_string.unwrap(), &setup_args, true);
+                        if status != 0 && status != 19 {
+                            eprintln!("WARNING: Unexpected error code ({})", status)
+                        }
+                    }
+                }
 
-            let v1 = Versioning::new(uninstall_reg_get_string("Version").unwrap_or_default())
-                .unwrap_or_default();
-            if v1 < v2 {
-                eprintln!("ERROR: Thorium isn't updated.");
-                return 1;
+                let setup_args: Vec<&str> = ["--silent"]
+                    .into_iter()
+                    .chain(args.par_iter().map(|s| s.as_str()).collect::<Vec<_>>())
+                    .collect();
+                println!("Installing Thorium...");
+                let status = simple_spawn(&download_path, &setup_args, false);
+                if nocache {
+                    fs::remove_file(&download_path).ok();
+                }
+                if status != 0 {
+                    return status;
+                }
+
+                let v1 = Versioning::new(uninstall_reg_get_string("Version").unwrap_or_default())
+                    .unwrap_or_default();
+                if v1 < v2.unwrap_or_default() {
+                    eprintln!("ERROR: Thorium isn't updated.");
+                    return 1;
+                }
+                println!("Thorium browser has been updated.");
+            } else {
+                println!("You are up to date.");
             }
-            println!("Thorium browser has been updated.");
-        } else {
-            println!("You are up to date.");
+            return 0;
         }
-        return 0;
-    } else {
-        eprintln!("ERROR: Could not get package info.");
-        return 2;
+        None => {
+            eprintln!("ERROR: Could not get package info.");
+            return 2;
+        }
     }
 }
 
