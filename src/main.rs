@@ -1,6 +1,7 @@
+use const_format::concatcp;
 use hide_console::hide_console;
 use regex::Regex;
-use std::{env, fs, process};
+use std::{env, fs, path::Path, process};
 use versions::Versioning;
 
 mod simple_utils;
@@ -8,18 +9,24 @@ use simple_utils::*;
 mod thorium;
 use thorium::*;
 
-const DOWNLOAD_PATH: &str = "./setup.exe";
+const SETUP_PATH: &str = concatcp!("./", env!("CARGO_PKG_NAME"), ".exe");
+const SETUP_PART_PATH: &str = concatcp!(SETUP_PATH, ".aria2");
+const README_PATH: &str = concatcp!("./", env!("CARGO_PKG_NAME"), ".md");
 
 fn show_help() {
-    let mut readme = include_str!("../readme.md")
-        .replace("(../../", &format!("({}/", env!("CARGO_PKG_REPOSITORY")));
-    readme = regex_replace_all(&readme, r"(?m)^.*```.*$", "");
-    readme = regex_replace_all(&readme, r"> \[!(\w+)\]\n> ", "> **$1:** ");
-    readme = regex_replace_all(&readme, r"\[(.+)\]\((.+)\)(.)", "$1 [$2]$3");
-    readme = regex_replace_all(&readme, r"(?m)^[^\S\n]+>", ">");
-    readme = readme.replacen("\n", &format!(" v{}\n", env!("CARGO_PKG_VERSION")), 1);
-    println!();
-    termimad::print_text(&readme);
+    let readme = include_str!("../readme.md")
+        .replace("(../../", &format!("({}/", env!("CARGO_PKG_REPOSITORY")))
+        .replacen("\n", &format!(" v{}\n", env!("CARGO_PKG_VERSION")), 1);
+    fs::write(README_PATH, &readme).ok();
+    #[cfg(not(debug_assertions))]
+    simple_spawn(
+        "cmd",
+        &["/c", "start", "notepad", README_PATH],
+        false,
+        false,
+    );
+    #[cfg(debug_assertions)]
+    simple_open(README_PATH, false);
 }
 
 fn program() -> i32 {
@@ -75,6 +82,11 @@ fn program() -> i32 {
                     }
                     true
                 }
+                "beta" => {
+                    eprintln!("WARNING: Using 'beta' release...");
+                    sources = BETA_SOURCES.to_owned();
+                    true
+                }
                 "nocache" => {
                     nocache = true;
                     true
@@ -97,7 +109,13 @@ fn program() -> i32 {
                 _ => false,
             };
             if clearcache {
-                if let Err(error) = fs::remove_file(DOWNLOAD_PATH) {
+                if let Err(error) = fs::remove_file(SETUP_PATH) {
+                    if error.kind() != std::io::ErrorKind::NotFound {
+                        eprintln!("{}", error);
+                        return error.raw_os_error().unwrap_or_else(|| 1);
+                    }
+                }
+                if let Err(error) = fs::remove_file(SETUP_PART_PATH) {
                     if error.kind() != std::io::ErrorKind::NotFound {
                         eprintln!("{}", error);
                         return error.raw_os_error().unwrap_or_else(|| 1);
@@ -116,7 +134,7 @@ fn program() -> i32 {
             }
         }
         if let Some(capture) = re_kv.captures(&args[i]) {
-            let key = capture["key"].to_lowercase();
+            let key = capture["key"].to_ascii_lowercase();
             let val = capture["val"].to_owned();
             let matched = match key.as_str() {
                 "repo" => {
@@ -125,18 +143,6 @@ fn program() -> i32 {
                 }
                 "simd" => {
                     simd = Some(val);
-                    true
-                }
-                "channel" => {
-                    if val == "beta" {
-                        eprintln!("WARNING: Using 'beta' channel...");
-                        sources = BETA_SOURCES.to_owned();
-                    } else if val != "latest" {
-                        eprintln!(
-                            "WARNING: Channel '{}' is unknown. Currently only knows 'beta', falling back to release...",
-                            val
-                        )
-                    }
                     true
                 }
                 _ => false,
@@ -174,7 +180,7 @@ fn program() -> i32 {
                     None => "not installed".to_owned(),
                 }
             );
-            let v2 = Versioning::new(&info.version);
+            let v2 = Versioning::new(&info.version.unwrap_or_default());
             println!(
                 "Upstream: {}",
                 match &v2 {
@@ -183,9 +189,19 @@ fn program() -> i32 {
                 }
             );
             if repair || v1.unwrap_or_default() < v2.to_owned().unwrap_or_default() {
-                let status = aria2_downloader(&info.url, DOWNLOAD_PATH, None);
-                if status != 0 {
-                    return status;
+                // Digest verify
+                let setup_path = Path::new(SETUP_PATH);
+                let sha256 = sha256_file(SETUP_PATH).unwrap_or_default();
+                // aria2 parts existence means uncompleted download
+                let aria2_part = Path::new(SETUP_PART_PATH);
+                if sha256 != info.digest.replace("sha256:", "") && !aria2_part.is_file() {
+                    fs::remove_file(SETUP_PATH).ok();
+                }
+                if !setup_path.is_file() || aria2_part.is_file() {
+                    let status = aria2_downloader(&info.url, SETUP_PATH, None);
+                    if status != 0 {
+                        return status;
+                    }
                 }
 
                 if force {
@@ -198,7 +214,8 @@ fn program() -> i32 {
                         if clearuserdata {
                             setup_args.push("--delete-profile");
                         }
-                        let status = simple_spawn(&uninstall_string.unwrap(), &setup_args, true);
+                        let status =
+                            simple_spawn(&uninstall_string.unwrap(), &setup_args, true, true);
                         if status != 0 && status != 19 {
                             eprintln!("WARNING: Unexpected error code ({})", status)
                         }
@@ -210,9 +227,9 @@ fn program() -> i32 {
                     .chain(args.iter().map(|s| s.as_str()))
                     .collect();
                 println!("Installing Thorium...");
-                let status = simple_spawn(DOWNLOAD_PATH, &setup_args, false);
+                let status = simple_spawn(SETUP_PATH, &setup_args, true, false);
                 if nocache {
-                    fs::remove_file(DOWNLOAD_PATH).ok();
+                    fs::remove_file(SETUP_PATH).ok();
                 }
                 if status != 0 {
                     return status;

@@ -26,8 +26,7 @@ fn main() -> std::io::Result<()> {
     let output = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .stdout(Stdio::piped())
-        .output()
-        .unwrap();
+        .output()?;
     let rev =
         String::from_utf8(output.stdout).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_owned());
     let year = Local::now().year();

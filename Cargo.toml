@@ -1,7 +1,7 @@
 [package]
 name = "ThoriumUpdate"
 description = "Thorium Update"
-version = "0.1.4-alpha"
+version = "0.1.5-alpha"
 edition = "2024"
 authors = ["just-shadyumbrella"]
 repository = "https://github.com/just-shadyumbrella/ThoriumUpdate_rs"
@@ -11,10 +11,10 @@ license-file = "LICENSE"
 const_format = "*"
 natord = "*"
 regex = "*"
+sha2 = "*"
 simd-json = { version = "*", features = ["runtime-detection"] }
 # owo-colors = "*"
 hide_console = "*"
-termimad = "*"
 rayon = "*"
 shell-words = "*"
 windows-registry = "*"
