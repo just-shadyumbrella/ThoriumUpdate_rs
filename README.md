@@ -32,6 +32,11 @@ Based on [`template-rs`](https://github.com/just-shadyumbrella/template-rs#prere
   > /retry=5
   > ```
 
+- `/wt`: Wait until Thorium process closes in seconds before installing to prevent userdata corruption. (Default: `0`; infinite)
+  > ```batch
+  > /wt=90
+  > ```
+
 > [!NOTE]
 > You can append Chromium installer arguments to the end of the arguments.
 

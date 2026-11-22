@@ -1,7 +1,14 @@
 use const_format::concatcp;
 use hide_console::hide_console;
 use regex::Regex;
-use std::{env, fs, path::Path, process};
+use std::{
+    env, fs,
+    io::{self, Write},
+    path::Path,
+    process,
+    thread::sleep,
+    time::{Duration, Instant},
+};
 use versions::Versioning;
 
 mod simple_utils;
@@ -45,7 +52,8 @@ fn program() -> i32 {
     let mut clearcache = false;
     let mut clearuserdata = false;
     let mut simd: Option<String> = None;
-    let mut retry: isize = 3;
+    let mut retry: usize = 3;
+    let mut wt: u64 = 0;
 
     let mut warn_args: Vec<String> = vec![];
 
@@ -154,7 +162,11 @@ fn program() -> i32 {
                     true
                 }
                 "retry" => {
-                    retry = val.parse::<isize>().unwrap();
+                    retry = val.parse::<usize>().unwrap();
+                    true
+                }
+                "wt" => {
+                    wt = val.parse::<u64>().unwrap();
                     true
                 }
                 _ => false,
@@ -202,12 +214,15 @@ fn program() -> i32 {
             );
             if repair || v1.unwrap_or_default() < v2.to_owned().unwrap_or_default() {
                 // Digest verify
+                let mut verified = false;
+                let digest = info.digest.replace("sha256:", "");
                 let setup_path = Path::new(SETUP_PATH);
-                let sha256 = sha256_file(SETUP_PATH).unwrap_or_default();
                 // aria2 parts existence means uncompleted download
                 let aria2_part = Path::new(SETUP_PART_PATH);
-                if sha256 != info.digest.replace("sha256:", "") && !aria2_part.is_file() {
+                if digest != sha256_file(SETUP_PATH).unwrap_or_default() && !aria2_part.is_file() {
                     fs::remove_file(SETUP_PATH).ok();
+                } else {
+                    verified = true;
                 }
                 let mut usecache = false;
                 if !setup_path.is_file() || aria2_part.is_file() {
@@ -232,6 +247,43 @@ fn program() -> i32 {
                     }
                 } else {
                     usecache = true;
+                }
+
+                // Double checksum after download
+                if !verified && digest != sha256_file(SETUP_PATH).unwrap_or_default() {
+                    fs::remove_file(SETUP_PATH).ok();
+                    fs::remove_file(SETUP_PART_PATH).ok();
+                    eprintln!("ERROR: Checksum failed.");
+                    return 3;
+                }
+
+                // Wait for Thorium process closed
+                let start = Instant::now();
+                let timeout = Duration::from_secs(wt);
+                let mut printed = false;
+                while is_thorium_running() {
+                    let elapsed = start.elapsed();
+                    if wt > 0 && elapsed >= timeout {
+                        print!("\r\x1B[2K");
+                        let _ = io::stdout().flush();
+                        eprintln!("Timeout {}s", wt);
+                        return 4;
+                    }
+                    if wt > 0 {
+                        print!(
+                            "\r\x1B[2KWaiting for Thorium to close... ({}s)",
+                            elapsed.as_secs()
+                        );
+                        let _ = io::stdout().flush();
+                    } else if !printed {
+                        print!("Waiting for Thorium to close...");
+                        let _ = io::stdout().flush();
+                        printed = true;
+                    }
+                    sleep(Duration::from_secs(1));
+                }
+                if printed {
+                    println!();
                 }
 
                 if force {
@@ -290,6 +342,16 @@ fn program() -> i32 {
     }
 }
 
+fn debug() -> i32 {
+    let install_location = uninstall_reg_get_string("InstallLocation").unwrap_or_default();
+    println!(
+        "{:?}",
+        check_process_running("thorium.exe", &install_location)
+    );
+    0
+}
+
 fn main() -> ! {
+    // process::exit(debug());
     process::exit(program())
 }

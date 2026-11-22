@@ -5,6 +5,7 @@ use std::{
     io::{self, Read},
     process::Command,
 };
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 const ARIA2_CMD: &str = "./aria2c.exe";
 #[cfg(all(target_os = "windows", target_pointer_width = "32"))]
@@ -107,4 +108,37 @@ pub fn simple_open(path: &str, as_location: bool) {
     } else {
         simple_spawn("cmd.exe", &["/c", "start", "/wait", path], true, true);
     }
+}
+
+#[derive(Debug)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub name: String,
+    pub exe_path: Option<String>,
+}
+
+pub fn find_process(target: &str) -> Vec<ProcInfo> {
+    let sys = System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+    );
+    sys.unwrap()
+        .processes()
+        .values()
+        .filter(|p| p.name().to_string_lossy().eq_ignore_ascii_case(target))
+        .map(|p| ProcInfo {
+            pid: p.pid().as_u32(),
+            name: p.name().to_string_lossy().into_owned(),
+            exe_path: p.exe().map(|e| e.display().to_string()),
+        })
+        .collect()
+}
+
+pub fn check_process_running(name: &str, path: &str) -> bool {
+    let procs = find_process(name);
+    for proc in procs {
+        if proc.exe_path.unwrap_or_default().contains(path) {
+            return true;
+        }
+    }
+    false
 }

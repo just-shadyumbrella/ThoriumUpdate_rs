@@ -10,6 +10,7 @@ pub const REPO: &str = "/gz83/thorium";
 pub const BETA_SOURCES: &str = "/releases";
 pub const RELEASE_SOURCES: &str = concatcp!(BETA_SOURCES, "/latest");
 pub const TARGET_QUERY: &str = "mini_installer.exe";
+pub const TARGET_NAME: &str = "thorium.exe";
 
 #[derive(Debug, Clone)]
 pub struct InstallerInfo {
@@ -53,15 +54,20 @@ pub fn get_package_info(
         &root
     };
 
-    let version = release["tag_name"].as_str().unwrap();
+    // This may fail if hit API rate limit
+    let Some(version) = release.get("tag_name").and_then(|v| v.as_str()) else {
+        let message = release.get("message").unwrap().as_str();
+        eprintln!("{}", message.unwrap());
+        exit(429)
+    };
 
     let mut assets: Vec<InstallerInfo> = release["assets"]
         .as_array()
         .unwrap()
         .par_iter()
         .filter_map(|asset| {
-            let url = asset["browser_download_url"].as_str().unwrap();
-            let digest = asset["digest"].as_str().unwrap();
+            let url = asset.get("browser_download_url").unwrap().as_str().unwrap();
+            let digest = asset.get("digest").unwrap().as_str().unwrap();
             if ends_with_ignore_case(url, TARGET_QUERY) {
                 Some(InstallerInfo {
                     version: None,
@@ -168,4 +174,9 @@ pub fn uninstall_reg_get_string(name: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn is_thorium_running() -> bool {
+    let install_location = uninstall_reg_get_string("InstallLocation").unwrap_or_default();
+    check_process_running(TARGET_NAME, &install_location)
 }
